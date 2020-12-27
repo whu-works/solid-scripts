@@ -39,10 +39,67 @@ module.exports = webpackEnv => {
     ? publicPath.slice(0, -1)
     : isDevelopment && "";
 
-  const browsersList = paths.browserslist;
-
   // Get environment variables to inject into our app.
   const env = getClientEnvironment(publicUrl);
+
+  const hasCoreJs = paths.hasCoreJs;
+
+  const babelPresetEnvOptions = hasCoreJs ? {
+    // Use browserlist to select polyfills and import where required
+    useBuiltIns: 'usage',
+    // Set the corejs version we are using to avoid warnings in console
+    corejs: 3,
+    // Exclude transforms that make all code slower
+    exclude: ['transform-typeof-symbol'],
+  } : {
+    // Exclude transforms that make all code slower
+    exclude: ['transform-typeof-symbol'],
+  };
+
+  const babelLoaderTs = {
+    loader: require.resolve("babel-loader"),
+    options: {
+      babelrc: false,
+      configFile: false,
+      presets: [
+        ["@babel/preset-env", babelPresetEnvOptions],
+        "solid",
+        "@babel/preset-typescript"
+      ],
+      plugins: [
+        "@babel/proposal-class-properties",
+        // Optional chaining and nullish coalescing are supported in @babel/preset-env,
+        // but not yet supported in webpack due to support missing from acorn.
+        // These can be removed once webpack has support.
+        // See https://github.com/facebook/create-react-app/issues/8445#issuecomment-588512250
+        require('@babel/plugin-proposal-optional-chaining').default,
+        require('@babel/plugin-proposal-nullish-coalescing-operator').default,
+      ],
+      cacheDirectory: true,
+      cacheCompression: false,
+      compact: isProduction,
+      sourceMaps: isProduction ? shouldUseSourceMap : isDevelopment,
+      inputSourceMap: isProduction ? shouldUseSourceMap : isDevelopment
+    }
+  };
+
+  const babelLoaderJs = {
+    loader: require.resolve("babel-loader"),
+    options: {
+      babelrc: false,
+      configFile: false,
+      presets: [
+        ["@babel/preset-env", babelPresetEnvOptions],
+        "solid"
+      ],
+      plugins: ["@babel/proposal-class-properties"],
+      cacheDirectory: true,
+      cacheCompression: false,
+      compact: isProduction,
+      sourceMaps: isProduction ? shouldUseSourceMap : isDevelopment,
+      inputSourceMap: isProduction ? shouldUseSourceMap : isDevelopment
+    }
+  };
 
   // common function to get style loaders
   const getStyleLoaders = (cssOptions, preProcessor, isElement) => {
@@ -154,13 +211,25 @@ module.exports = webpackEnv => {
         new OptimizeCSSAssetsPlugin({
           cssProcessorOptions: {
             parser: safePostCssParser,
-            map: false
+            map: shouldUseSourceMap
+              ? {
+                  // `inline: false` forces the sourcemap to be output into a
+                  // separate file
+                  inline: false,
+                  // `annotation: true` appends the sourceMappingURL to the end of
+                  // the css file, helping the browser find the sourcemap
+                  annotation: true,
+                }
+              : false,
+          },
+          cssProcessorPluginOptions: {
+            preset: ['default', { minifyFontValues: { removeQuotes: false } }],
           }
         })
       ],
       splitChunks: {
         chunks: "all",
-        name: false
+        name: isDevelopment
       },
       runtimeChunk: true
     },
@@ -190,98 +259,28 @@ module.exports = webpackEnv => {
               include: paths.appElements,
               use: [
                 require.resolve("component-register-loader"),
-                {
-                  loader: require.resolve("babel-loader"),
-                  options: {
-                    babelrc: false,
-                    configFile: false,
-                    presets: [
-                      ["@babel/preset-env", { targets: browsersList }],
-                      "solid",
-                      "@babel/preset-typescript"
-                    ],
-                    plugins: [
-                      "@babel/plugin-syntax-dynamic-import",
-                      "@babel/proposal-class-properties",
-                      "@babel/proposal-object-rest-spread"
-                    ],
-                    cacheDirectory: true,
-                    cacheCompression: isProduction,
-                    compact: isProduction
-                  }
-                }
+                babelLoaderTs
               ]
             },
             {
               test: /\.(ts|tsx)$/,
               include: paths.appSrc,
               exclude: [paths.appElements],
-              use: [
-                {
-                  loader: require.resolve("babel-loader"),
-                  options: {
-                    babelrc: false,
-                    configFile: false,
-                    presets: [
-                      "@babel/preset-env",
-                      "solid",
-                      "@babel/preset-typescript"
-                    ],
-                    plugins: [
-                      "@babel/plugin-syntax-dynamic-import",
-                      "@babel/proposal-class-properties",
-                      "@babel/proposal-object-rest-spread"
-                    ],
-                    cacheDirectory: true,
-                    cacheCompression: isProduction,
-                    compact: isProduction
-                  }
-                }
-              ]
+              use: [babelLoaderTs],
             },
             {
               test: /\.(js|mjs|jsx)$/,
               include: paths.appElements,
               use: [
                 require.resolve("component-register-loader"),
-                {
-                  loader: require.resolve("babel-loader"),
-                  options: {
-                    babelrc: false,
-                    configFile: false,
-                    presets: [
-                      ["@babel/preset-env", { targets: browsersList }],
-                      "solid"
-                    ],
-                    plugins: ["@babel/plugin-syntax-dynamic-import"],
-                    cacheDirectory: true,
-                    cacheCompression: isProduction,
-                    compact: isProduction
-                  }
-                }
+                babelLoaderJs
               ]
             },
             {
               test: /\.(js|mjs|jsx)$/,
               include: paths.appSrc,
               exclude: [paths.appElements],
-              use: [
-                {
-                  loader: require.resolve("babel-loader"),
-                  options: {
-                    babelrc: false,
-                    configFile: false,
-                    presets: [
-                      ["@babel/preset-env", { targets: browsersList }],
-                      "solid"
-                    ],
-                    plugins: ["@babel/plugin-syntax-dynamic-import"],
-                    cacheDirectory: true,
-                    cacheCompression: isProduction,
-                    compact: isProduction
-                  }
-                }
-              ]
+              use: [babelLoaderJs]
             },
             {
               test: /\.(js|mjs)$/,
@@ -291,9 +290,9 @@ module.exports = webpackEnv => {
                 babelrc: false,
                 configFile: false,
                 compact: false,
-                presets: [["@babel/preset-env", { targets: browsersList }]],
+                presets: [["@babel/preset-env",babelPresetEnvOptions]],
                 cacheDirectory: true,
-                cacheCompression: isProduction,
+                cacheCompression: false,
                 sourceMaps: isProduction ? shouldUseSourceMap : isDevelopment,
                 inputSourceMap: isProduction ? shouldUseSourceMap : isDevelopment
               }

@@ -21,6 +21,17 @@ function ensureSlash(inputPath, needsSlash) {
 const getPublicUrl = appPackageJson =>
   envPublicUrl || require(appPackageJson).homepage;
 
+const hasCoreJsDependency = appPackageJson => {
+  const packageJson = require(appPackageJson)
+  const dependencies = packageJson.dependencies || {};
+  const devDependencies = packageJson.devDependencies || {};
+
+  const hasCoreJs = (deps) => Object.getOwnPropertyNames(deps).includes('core-js');
+
+  return hasCoreJs(dependencies) || hasCoreJs(devDependencies)
+}
+
+
 // Resolve file paths in the same order as webpack
 const resolveModule = (resolveFn, filePath) => {
   const extension = moduleFileExtensions.find(extension =>
@@ -70,6 +81,7 @@ module.exports = {
   appNodeModules: resolveApp('node_modules'),
   publicUrl: getPublicUrl(resolveApp('package.json')),
   servedPath: getServedPath(resolveApp('package.json')),
+  hasCoreJs: hasCoreJsDependency(resolveApp('package.json')),
   ownPath: resolveOwn('.'),
   ownNodeModules: resolveOwn('node_modules')
 };
